@@ -2,6 +2,7 @@ package stream
 
 import (
 	"context"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -11,12 +12,12 @@ func backpressureEvents() []Event {
 	// 4 个窗口，每窗口 2 个 key，共 8 条输出。
 	for w := int64(0); w < 4; w++ {
 		evs = append(evs,
-			Event{Key: "a", EventTime: w*10 + 1, Value: w + 1},
-			Event{Key: "b", EventTime: w*10 + 2, Value: w + 2},
+			Event{ID: "bp-a-" + strconv.FormatInt(w, 10), Key: "a", EventTime: w*10 + 1, Value: w + 1},
+			Event{ID: "bp-b-" + strconv.FormatInt(w, 10), Key: "b", EventTime: w*10 + 2, Value: w + 2},
 		)
 	}
 	// 推进水位线关闭所有窗口。
-	evs = append(evs, Event{Key: "z", EventTime: 100, Value: 0})
+	evs = append(evs, Event{ID: "bp-z", Key: "z", EventTime: 100, Value: 0})
 	return evs
 }
 
@@ -26,7 +27,7 @@ func TestBackpressureBoundedAndOrdered(t *testing.T) {
 	defer cancel()
 
 	sink := NewSink(2) // 极小缓冲，迫使背压
-	rt := New(NewSliceSource(backpressureEvents()), 10, 5, sink, NewStore(t.TempDir()))
+	rt := New(NewSliceSource(backpressureEvents()), 10, 5, 1<<62, sink, NewStore(t.TempDir()))
 
 	done := make(chan error, 1)
 	go func() { done <- rt.Run(ctx) }()
@@ -87,7 +88,7 @@ func TestBackpressureBoundedAndOrdered(t *testing.T) {
 func TestBackpressureCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	sink := NewSink(1)
-	rt := New(NewSliceSource(backpressureEvents()), 10, 5, sink, NewStore(t.TempDir()))
+	rt := New(NewSliceSource(backpressureEvents()), 10, 5, 1<<62, sink, NewStore(t.TempDir()))
 
 	done := make(chan error, 1)
 	go func() { done <- rt.Run(ctx) }()

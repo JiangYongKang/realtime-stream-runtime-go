@@ -2,12 +2,12 @@ package stream
 
 // Result 是一个窗口关闭后产出的聚合结果。
 type Result struct {
-	WindowStart int64
-	WindowEnd   int64
-	Key         string
-	Count       int64
-	Sum         int64
-	Seq         int64 // 全局单调递增的输出序号，保证输出有序
+	WindowStart int64  `json:"windowStart"`
+	WindowEnd   int64  `json:"windowEnd"`
+	Key         string `json:"key"`
+	Count       int64  `json:"count"`
+	Sum         int64  `json:"sum"`
+	Seq         int64  `json:"seq"` // 全局单调递增的输出序号，保证输出有序
 }
 
 // LateRecord 记录一条被丢弃的超范围迟到事件（与数据错误区分）。

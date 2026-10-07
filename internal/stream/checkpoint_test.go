@@ -9,14 +9,14 @@ import (
 
 func recoveryEvents() []Event {
 	return []Event{
-		{Key: "a", EventTime: 1, Value: 1},
-		{Key: "b", EventTime: 3, Value: 2},
-		{Key: "a", EventTime: 8, Value: 3},
-		{Key: "a", EventTime: 12, Value: 4}, // 关闭 [0,10)
-		{Key: "b", EventTime: 15, Value: 5},
-		{Key: "a", EventTime: 21, Value: 6}, // 关闭 [10,20)
-		{Key: "c", EventTime: 22, Value: 7},
-		{Key: "a", EventTime: 35, Value: 8}, // 关闭 [20,30)
+		{ID: "r1", Key: "a", EventTime: 1, Value: 1},
+		{ID: "r2", Key: "b", EventTime: 3, Value: 2},
+		{ID: "r3", Key: "a", EventTime: 8, Value: 3},
+		{ID: "r4", Key: "a", EventTime: 12, Value: 4}, // 关闭 [0,10)
+		{ID: "r5", Key: "b", EventTime: 15, Value: 5},
+		{ID: "r6", Key: "a", EventTime: 21, Value: 6}, // 关闭 [10,20)
+		{ID: "r7", Key: "c", EventTime: 22, Value: 7},
+		{ID: "r8", Key: "a", EventTime: 35, Value: 8}, // 关闭 [20,30)
 	}
 }
 
@@ -26,7 +26,7 @@ func TestCheckpointRecoveryConsistency(t *testing.T) {
 
 	// 基准：一次性跑完。
 	baseSink := NewSink(16)
-	base := New(NewSliceSource(recoveryEvents()), 10, 5, baseSink, NewStore(t.TempDir()))
+	base := New(NewSliceSource(recoveryEvents()), 10, 5, 1<<62, baseSink, NewStore(t.TempDir()))
 	if err := base.Run(ctx); err != nil {
 		t.Fatalf("baseline run: %v", err)
 	}
@@ -36,7 +36,7 @@ func TestCheckpointRecoveryConsistency(t *testing.T) {
 	dir := t.TempDir()
 	sink := NewSink(16)
 	src := NewSliceSource(recoveryEvents())
-	rt := New(src, 10, 5, sink, NewStore(dir))
+	rt := New(src, 10, 5, 1<<62, sink, NewStore(dir))
 	for i := 0; i < 3; i++ {
 		if _, err := rt.Step(ctx); err != nil {
 			t.Fatalf("step: %v", err)
@@ -59,8 +59,8 @@ func TestCheckpointRecoveryConsistency(t *testing.T) {
 	t.Logf("crash injected at sourceOffset=%d (unconfirmed pending=%d)", src.Offset(), sink.Pending())
 
 	// 重启：新运行时共享源、Sink 与存储，从检查点恢复。
-	rt2 := New(src, 10, 5, sink, NewStore(dir))
-	if err := rt2.Restore(); err != nil {
+	rt2 := New(src, 10, 5, 1<<62, sink, NewStore(dir))
+	if err := rt2.Restore(context.Background()); err != nil {
 		t.Fatalf("restore: %v", err)
 	}
 	t.Logf("restored: sourceOffset=%d nextSeq=%d watermark=%d", src.Offset(), rt2.NextSeq(), rt2.Watermark())
@@ -95,7 +95,7 @@ func TestCheckpointRecoveryConsistency(t *testing.T) {
 func TestCheckpointCorrupt(t *testing.T) {
 	dir := t.TempDir()
 	store := NewStore(dir)
-	rt := New(NewSliceSource(recoveryEvents()), 10, 5, NewSink(16), store)
+	rt := New(NewSliceSource(recoveryEvents()), 10, 5, 1<<62, NewSink(16), store)
 	if err := rt.Checkpoint(); err != nil {
 		t.Fatalf("checkpoint: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestCheckpointCorrupt(t *testing.T) {
 	if err := os.WriteFile(store.Path(), data, 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	err = rt.Restore()
+	err = rt.Restore(context.Background())
 	if !errors.Is(err, ErrCheckpointCorrupt) {
 		t.Fatalf("expected ErrCheckpointCorrupt, got %v", err)
 	}
@@ -118,7 +118,7 @@ func TestCheckpointCorrupt(t *testing.T) {
 func TestCheckpointVersionIncompatible(t *testing.T) {
 	dir := t.TempDir()
 	store := NewStore(dir)
-	rt := New(NewSliceSource(recoveryEvents()), 10, 5, NewSink(16), store)
+	rt := New(NewSliceSource(recoveryEvents()), 10, 5, 1<<62, NewSink(16), store)
 	if err := rt.Checkpoint(); err != nil {
 		t.Fatalf("checkpoint: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestCheckpointVersionIncompatible(t *testing.T) {
 	if err := store.Save(cp); err != nil {
 		t.Fatalf("save: %v", err)
 	}
-	err = rt.Restore()
+	err = rt.Restore(context.Background())
 	if !errors.Is(err, ErrCheckpointVersion) {
 		t.Fatalf("expected ErrCheckpointVersion, got %v", err)
 	}
@@ -147,7 +147,7 @@ func TestCheckpointOffsetRegression(t *testing.T) {
 	store := NewStore(dir)
 	sink := NewSink(16)
 	src := NewSliceSource(recoveryEvents())
-	rt := New(src, 10, 5, sink, store)
+	rt := New(src, 10, 5, 1<<62, sink, store)
 
 	// 跑完并确认全部输出。
 	if err := rt.Run(ctx); err != nil {
@@ -166,8 +166,8 @@ func TestCheckpointOffsetRegression(t *testing.T) {
 	if err := store.Save(stale); err != nil {
 		t.Fatalf("save stale: %v", err)
 	}
-	rt2 := New(src, 10, 5, sink, store)
-	err := rt2.Restore()
+	rt2 := New(src, 10, 5, 1<<62, sink, store)
+	err := rt2.Restore(context.Background())
 	if !errors.Is(err, ErrOffsetRegression) {
 		t.Fatalf("expected ErrOffsetRegression, got %v", err)
 	}
@@ -183,7 +183,7 @@ func TestCheckpointOffsetRegression(t *testing.T) {
 	if err := store.Save(future); err != nil {
 		t.Fatalf("save future: %v", err)
 	}
-	err = rt2.Restore()
+	err = rt2.Restore(context.Background())
 	if !errors.Is(err, ErrOffsetRegression) {
 		t.Fatalf("expected ErrOffsetRegression for out-of-range offset, got %v", err)
 	}

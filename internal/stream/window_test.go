@@ -12,14 +12,14 @@ func TestWindowAggregationAndLateness(t *testing.T) {
 	dir := t.TempDir()
 	sink := NewSink(16)
 	src := NewSliceSource([]Event{
-		{Key: "a", EventTime: 12, Value: 1},  // 窗口 [10,20)
-		{Key: "a", EventTime: 22, Value: 2},  // 窗口 [20,30)，maxSeen=22, wm=17
-		{Key: "a", EventTime: 14, Value: 10}, // 允许范围内迟到：窗口 [10,20) 未关闭，归并
-		{Key: "a", EventTime: 25, Value: 3},  // maxSeen=25, wm=20 -> 关闭 [10,20)
-		{Key: "a", EventTime: 11, Value: 99}, // 超范围迟到：窗口 [10,20) 已关闭，丢弃并记录
-		{Key: "", EventTime: 30, Value: 1},   // 数据错误：空 key，与迟到区分
+		{ID: "w1", Key: "a", EventTime: 12, Value: 1},  // 窗口 [10,20)
+		{ID: "w2", Key: "a", EventTime: 22, Value: 2},  // 窗口 [20,30)，maxSeen=22, wm=17
+		{ID: "w3", Key: "a", EventTime: 14, Value: 10}, // 允许范围内迟到：窗口 [10,20) 未关闭，归并
+		{ID: "w4", Key: "a", EventTime: 25, Value: 3},  // maxSeen=25, wm=20 -> 关闭 [10,20)
+		{ID: "w5", Key: "a", EventTime: 11, Value: 99}, // 超范围迟到：窗口 [10,20) 已关闭，丢弃并记录
+		{ID: "bad", Key: "", EventTime: 30, Value: 1},  // 数据错误：空 key，与迟到区分
 	})
-	rt := New(src, 10, 5, sink, NewStore(dir))
+	rt := New(src, 10, 5, 1<<62, sink, NewStore(dir))
 	ctx := context.Background()
 
 	for i := 0; i < 6; i++ {
@@ -67,23 +67,23 @@ func TestWindowAggregationAndLateness(t *testing.T) {
 func TestOutOfOrderDeterministic(t *testing.T) {
 	mk := func(events []Event) []Result {
 		sink := NewSink(16)
-		rt := New(NewSliceSource(events), 10, 5, sink, NewStore(t.TempDir()))
+		rt := New(NewSliceSource(events), 10, 5, 1<<62, sink, NewStore(t.TempDir()))
 		if err := rt.Run(context.Background()); err != nil {
 			t.Fatalf("run: %v", err)
 		}
 		return sink.Confirmed()
 	}
 	inOrder := []Event{
-		{Key: "a", EventTime: 1, Value: 1},
-		{Key: "a", EventTime: 5, Value: 2},
-		{Key: "b", EventTime: 7, Value: 3},
-		{Key: "a", EventTime: 30, Value: 4},
+		{ID: "o1", Key: "a", EventTime: 1, Value: 1},
+		{ID: "o2", Key: "a", EventTime: 5, Value: 2},
+		{ID: "o3", Key: "b", EventTime: 7, Value: 3},
+		{ID: "o4", Key: "a", EventTime: 30, Value: 4},
 	}
 	outOfOrder := []Event{
-		{Key: "a", EventTime: 5, Value: 2},
-		{Key: "b", EventTime: 7, Value: 3},
-		{Key: "a", EventTime: 1, Value: 1},
-		{Key: "a", EventTime: 30, Value: 4},
+		{ID: "o2", Key: "a", EventTime: 5, Value: 2},
+		{ID: "o3", Key: "b", EventTime: 7, Value: 3},
+		{ID: "o1", Key: "a", EventTime: 1, Value: 1},
+		{ID: "o4", Key: "a", EventTime: 30, Value: 4},
 	}
 	a, b := mk(inOrder), mk(outOfOrder)
 	if len(a) != len(b) {

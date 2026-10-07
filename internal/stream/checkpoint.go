@@ -13,8 +13,10 @@ import (
 var (
 	// ErrCheckpointCorrupt 检查点内容损坏（校验和不匹配或无法解析）。
 	ErrCheckpointCorrupt = errors.New("checkpoint corrupt")
-	// ErrCheckpointVersion 检查点版本与当前运行时不兼容。
+	// ErrCheckpointVersion 检查点格式版本与当前运行时不兼容。
 	ErrCheckpointVersion = errors.New("checkpoint version incompatible")
+	// ErrGenerationIncompatible 检查点代际（lineage）与本次运行配置不一致。
+	ErrGenerationIncompatible = errors.New("checkpoint generation incompatible")
 	// ErrOffsetRegression 恢复位点早于检查点已确认位点，属于位点回退。
 	ErrOffsetRegression = errors.New("offset regression")
 	// ErrNoCheckpoint 没有可用的检查点。
@@ -22,7 +24,9 @@ var (
 )
 
 // CheckpointVersion 当前检查点格式版本。
-const CheckpointVersion = 1
+// v2 在 v1 基础上新增 Generation（代际）与 Seen（去重状态）；v1 检查点一律
+// 以 ErrCheckpointVersion 拒绝，不做静默迁移。
+const CheckpointVersion = 2
 
 // WindowState 窗口聚合状态的可序列化形式。
 type WindowState struct {
@@ -33,11 +37,13 @@ type WindowState struct {
 // Checkpoint 是一次已确认的运行状态快照。
 type Checkpoint struct {
 	Version      int64                            `json:"version"`
+	Generation   string                           `json:"generation"`
 	SourceOffset int64                            `json:"sourceOffset"`
 	MaxEventTime int64                            `json:"maxEventTime"`
 	Started      bool                             `json:"started"`
 	NextSeq      int64                            `json:"nextSeq"`
 	Windows      map[int64]map[string]WindowState `json:"windows"`
+	Seen         []SeenEvent                      `json:"seen"`
 }
 
 // envelope 带校验和的磁盘封装。

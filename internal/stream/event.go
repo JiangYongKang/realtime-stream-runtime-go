@@ -1,7 +1,10 @@
 package stream
 
 // Event 是输入流中的一条记录，携带事件时间。
+// ID 为事件身份标识，用于至少一次投递下的幂等去重；ID 为空表示上游不保证身份，
+// 这类事件不参与去重，按旧语义处理。
 type Event struct {
+	ID        string
 	Key       string
 	EventTime int64 // 事件时间，毫秒
 	Value     int64
